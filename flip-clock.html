@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Flip Clock">
+<title>Flip Clock</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+/* ── Portrait sizing ── */
+:root {
+  --card-w: min(42vw, 162px);
+  --card-h: calc(var(--card-w) * 1.38);
+  --card-r: calc(var(--card-w) * 0.09);
+  --font:   calc(var(--card-w) * 0.78);
+  --gap:    calc(var(--card-w) * 0.06);
+  --row-gap: calc(var(--card-w) * 0.07);
+  --sep-size: 0px;
+  --sep-pad: 0px;
+}
+
+/* ── Themes ── */
+body { background: var(--bg); transition: background 0.4s; }
+
+body.white {
+  --bg:     #d2d4d6;
+  --card:   #eaeaea;
+  --shadow: rgba(0,0,0,0.20);
+  --line:   rgba(0,0,0,0.10);
+  --text:   #111111;
+  --sep-c:  rgba(0,0,0,0.28);
+  --btn-bg: rgba(0,0,0,0.10);
+}
+body.black {
+  --bg:     #0c0c0c;
+  --card:   #1a1a1a;
+  --shadow: rgba(0,0,0,0.60);
+  --line:   rgba(255,255,255,0.07);
+  --text:   #f0f0f0;
+  --sep-c:  rgba(255,255,255,0.28);
+  --btn-bg: rgba(255,255,255,0.10);
+}
+
+/* ── Theme button ── */
+.theme-btn {
+  position: fixed;
+  top: max(18px, env(safe-area-inset-top, 18px));
+  right: 20px;
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: var(--btn-bg);
+  border: none; cursor: pointer;
+  font-size: 19px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  transition: background 0.3s, transform 0.15s;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+}
+.theme-btn:active { transform: scale(0.92); }
+
+/* ── Orientation button ── */
+.orient-btn {
+  position: fixed;
+  bottom: max(18px, env(safe-area-inset-bottom, 18px));
+  right: 20px;
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: var(--btn-bg);
+  border: none; cursor: pointer;
+  font-size: 19px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  transition: background 0.3s, transform 0.15s;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+}
+.orient-btn:active { transform: scale(0.92); }
+
+/* ── Clock wrapper: 창의 50% 너비 ── */
+.clock-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: max(60px, env(safe-area-inset-top, 60px));
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+/* ── Clock: 세로 모드 기본값 ── */
+.clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--row-gap);
+  width: 50vw;        /* 창 가로의 50% */
+  max-width: 500px;
+  flex-wrap: nowrap;  /* wrap 금지 */
+}
+
+/* ── 가로 모드 (force-row) ── */
+.clock.force-row {
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  flex-wrap: nowrap !important;
+  /* 가로 모드일 때 카드 크기 재정의 */
+  --card-h: min(35vh, 140px);
+  --card-w: calc(var(--card-h) * 0.72);
+  --card-r: calc(var(--card-h) * 0.08);
+  --font:   calc(var(--card-h) * 0.78);
+  --gap:    calc(var(--card-h) * 0.045);
+  --sep-size: calc(var(--card-h) * 0.24);
+  --sep-pad: calc(var(--card-w) * 0.14);
+}
+
+/* ── Digit group ── */
+.group { display: flex; gap: var(--gap); flex-shrink: 0; }
+
+/* ── Colon separator ── */
+.sep {
+  color: var(--sep-c);
+  font-size: var(--sep-size);
+  font-weight: 900;
+  line-height: 1;
+  padding: 0 var(--sep-pad);
+  padding-bottom: 0.08em;
+  display: none;          /* 기본: 숨김 */
+  align-self: center;
+  flex-shrink: 0;
+  transition: color 0.4s, font-size 0.3s;
+}
+
+/* force-row일 때만 sep 표시 (JS로 제어) */
+.clock.force-row .sep {
+  display: block;
+}
+
+/* ── Flip unit ── */
+.flip-unit {
+  position: relative;
+  width: var(--card-w);
+  height: var(--card-h);
+  perspective: 900px;
+  flex-shrink: 0;
+}
+
+/* ── Static card halves ── */
+.half {
+  position: absolute;
+  left: 0; right: 0;
+  height: 50%;
+  background: var(--card);
+  overflow: hidden;
+  box-shadow: 0 5px 18px var(--shadow);
+  transition: background 0.4s;
+}
+.half.top { top: 0; border-radius: var(--card-r) var(--card-r) 0 0; }
+.half.bottom { bottom: 0; border-radius: 0 0 var(--card-r) var(--card-r); }
+
+.half.top::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--line);
+}
+
+.num-wrap {
+  position: absolute;
+  left: 0; right: 0;
+  height: 200%;
+  display: flex; align-items: center; justify-content: center;
+}
+.half.top .num-wrap    { top: 0; }
+.half.bottom .num-wrap { bottom: 0; }
+
+.num-wrap span {
+  font-size: var(--font);
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+  display: block;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.4s;
+}
+
+/* ── Animated flaps ── */
+.flap {
+  position: absolute;
+  left: 0; right: 0;
+  height: 50%;
+  background: var(--card);
+  overflow: hidden;
+  box-shadow: 0 5px 18px var(--shadow);
+  transition: background 0.4s;
+  z-index: 3;
+}
+.flap.flap-top {
+  top: 0;
+  border-radius: var(--card-r) var(--card-r) 0 0;
+  transform-origin: bottom center;
+}
+.flap.flap-top::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--line);
+}
+.flap.flap-bottom {
+  bottom: 0;
+  border-radius: 0 0 var(--card-r) var(--card-r);
+  transform-origin: top center;
+  visibility: hidden;
+}
+
+.flap .num-wrap { position: absolute; left: 0; right: 0; height: 200%; }
+.flap.flap-top .num-wrap    { top: 0; }
+.flap.flap-bottom .num-wrap { bottom: 0; }
+
+/* ── Flip keyframes ── */
+@keyframes fold-down {
+  from { transform: rotateX(0deg); }
+  to   { transform: rotateX(-90deg); }
+}
+@keyframes fold-up {
+  from { transform: rotateX(90deg); }
+  to   { transform: rotateX(0deg); }
+}
+
+.flap.flap-top.go    { animation: fold-down 0.23s ease-in  forwards; }
+.flap.flap-bottom.go { visibility: visible; animation: fold-up 0.23s ease-out forwards; }
+</style>
+</head>
+<body class="white">
+
+<button class="theme-btn" onclick="toggleTheme()" aria-label="테마 변경">◐</button>
+<button class="orient-btn" onclick="toggleOrientation()" aria-label="가로/세로 전환">↔</button>
+
+<div class="clock-wrap">
+  <div class="clock">
+    <div class="group">
+      <div class="flip-unit" id="d0"></div>
+      <div class="flip-unit" id="d1"></div>
+    </div>
+    <div class="sep">:</div>
+    <div class="group">
+      <div class="flip-unit" id="d2"></div>
+      <div class="flip-unit" id="d3"></div>
+    </div>
+    <div class="sep">:</div>
+    <div class="group">
+      <div class="flip-unit" id="d4"></div>
+      <div class="flip-unit" id="d5"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const THEME_KEY = 'flip-clock-theme';
+const ORIENT_KEY = 'flip-clock-orient';
+
+function buildUnit(el) {
+  el.innerHTML = `
+    <div class="half top"><div class="num-wrap"><span>0</span></div></div>
+    <div class="half bottom"><div class="num-wrap"><span>0</span></div></div>
+    <div class="flap flap-top"><div class="num-wrap"><span>0</span></div></div>
+    <div class="flap flap-bottom"><div class="num-wrap"><span>0</span></div></div>
+  `;
+  el._val       = -1;
+  el._topSpan   = el.querySelector('.half.top span');
+  el._botSpan   = el.querySelector('.half.bottom span');
+  el._flapTop   = el.querySelector('.flap.flap-top');
+  el._flapBot   = el.querySelector('.flap.flap-bottom');
+  el._flapTopSp = el.querySelector('.flap.flap-top span');
+  el._flapBotSp = el.querySelector('.flap.flap-bottom span');
+}
+
+const units = ['d0','d1','d2','d3','d4','d5'].map(id => {
+  const el = document.getElementById(id);
+  buildUnit(el);
+  return el;
+});
+
+function setDigit(el, n) {
+  if (el._val === n) return;
+  const s = String(n);
+  if (el._val < 0) {
+    el._topSpan.textContent = s;
+    el._botSpan.textContent = s;
+    el._flapTopSp.textContent = s;
+    el._val = n;
+    return;
+  }
+  const old = String(el._val);
+  el._val = n;
+  el._flapTopSp.textContent = old;
+  el._flapBotSp.textContent = s;
+  el._topSpan.textContent = s;
+  el._flapTop.classList.remove('go');
+  void el._flapTop.offsetWidth;
+  el._flapTop.classList.add('go');
+  const MID = 115;
+  setTimeout(() => {
+    el._botSpan.textContent = s;
+    el._flapBot.classList.remove('go');
+    void el._flapBot.offsetWidth;
+    el._flapBot.classList.add('go');
+  }, MID);
+  setTimeout(() => {
+    el._flapTopSp.textContent = s;
+    el._flapTop.classList.remove('go');
+    el._flapBot.classList.remove('go');
+  }, MID + 260);
+}
+
+function tick() {
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const s = now.getSeconds();
+  setDigit(units[0], Math.floor(h / 10));
+  setDigit(units[1], h % 10);
+  setDigit(units[2], Math.floor(m / 10));
+  setDigit(units[3], m % 10);
+  setDigit(units[4], Math.floor(s / 10));
+  setDigit(units[5], s % 10);
+}
+
+function toggleTheme() {
+  const isWhite = document.body.classList.contains('white');
+  document.body.classList.toggle('white', !isWhite);
+  document.body.classList.toggle('black',  isWhite);
+  localStorage.setItem(THEME_KEY, isWhite ? 'black' : 'white');
+}
+
+// 저장된 테마 복원
+const savedTheme = localStorage.getItem(THEME_KEY);
+if (savedTheme) {
+  document.body.classList.remove('white', 'black');
+  document.body.classList.add(savedTheme);
+}
+
+// ── 가로/세로 전환 ──
+let isRow = false;
+
+function applyOrientation() {
+  const clock = document.querySelector('.clock');
+  if (isRow) {
+    clock.classList.add('force-row');
+  } else {
+    clock.classList.remove('force-row');
+  }
+  localStorage.setItem(ORIENT_KEY, isRow ? '1' : '0');
+}
+
+function toggleOrientation() {
+  isRow = !isRow;
+  applyOrientation();
+}
+
+// 저장된 방향 복원
+if (localStorage.getItem(ORIENT_KEY) === '1') {
+  isRow = true;
+  applyOrientation();
+}
+
+// 시작
+tick();
+const msLeft = 1000 - new Date().getMilliseconds();
+setTimeout(() => { tick(); setInterval(tick, 1000); }, msLeft);
+</script>
+</body>
+</html>
